@@ -1,23 +1,12 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.28;
+pragma solidity ^0.8.20;
 
+import "./interfaces/ITicket_NFT.sol";
+import "./libaries/Errors.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
-
-
-contract Ticket_NFT is ERC721, Ownable {
-    uint256 private _nextTokenId;
-
-    constructor(string memory name_, string memory symbol_) ERC721(name_, symbol_) Ownable(msg.sender) {}
-
-    function safeMint(address to) external onlyOwner returns (uint256) {
-        uint256 tokenId = _nextTokenId++;
-        _safeMint(to, tokenId);
-        return tokenId;
-    }
-}
 
 contract EventTicketing is Ownable, ReentrancyGuard {
     using Strings for uint256;
@@ -50,13 +39,12 @@ contract EventTicketing is Ownable, ReentrancyGuard {
     uint256 public totalEventsOrganized;
     mapping(uint256 => mapping(PaidTicketCategory => Ticket)) public eventTickets;
     uint256 public totalTicketsCreated;
-    mapping(uint256 => mapping(address => bool)) public isRegistered;
-    mapping(uint256 => mapping(address => PaidTicketCategory)) public userTicketCategory;
     uint256 public totalPurchasedTickets;
     mapping(uint256 => mapping(address => bool)) public isVerified;
     mapping(address => mapping(uint256 => uint256)) public organiserRevBal;
 
     event EventOrganized(uint256 indexed eventId, address indexed organizer);
+    event EventUpdated(uint256 indexed eventId, string field);
     event TicketCreated(uint256 indexed eventId, PaidTicketCategory category, address nftContract);
     event TicketPurchased(uint256 indexed eventId, address buyer, address recipient, PaidTicketCategory category);
     event AttendeeVerified(uint256 indexed eventId, address indexed attendee);
@@ -74,6 +62,7 @@ contract EventTicketing is Ownable, ReentrancyGuard {
     ) external returns (uint256) {
         if (bytes(_title).length == 0) revert Errors.EmptyTitle();
         if (bytes(_description).length == 0) revert Errors.EmptyDescription();
+        if (bytes(_location).length == 0) revert Errors.EmptyLocation();
         if (_startDate >= _endDate || _startDate <= block.timestamp) revert Errors.InvalidEventDates(_startDate, _endDate);
         if (_expectedAttendees == 0) revert Errors.InvalidExpectedAttendees(_expectedAttendees);
 
@@ -96,6 +85,73 @@ contract EventTicketing is Ownable, ReentrancyGuard {
 
         emit EventOrganized(eventId, msg.sender);
         return eventId;
+    }
+
+    function updateEventTitle(uint256 eventId, string memory newTitle) external {
+        Event storage e = events[eventId];
+        if (e.id == 0) revert Errors.EventDoesNotExist(eventId);
+        if (msg.sender != e.organizer) revert Errors.NotAuthorized();
+        if (block.timestamp >= e.startDate) revert Errors.UpdateNotAllowedAfterStart();
+        if (bytes(newTitle).length == 0) revert Errors.EmptyTitle();
+
+        e.title = newTitle;
+        emit EventUpdated(eventId, "title");
+    }
+
+    function updateEventDescription(uint256 eventId, string memory newDescription) external {
+        Event storage e = events[eventId];
+        if (e.id == 0) revert Errors.EventDoesNotExist(eventId);
+        if (msg.sender != e.organizer) revert Errors.NotAuthorized();
+        if (block.timestamp >= e.startDate) revert Errors.UpdateNotAllowedAfterStart();
+        if (bytes(newDescription).length == 0) revert Errors.EmptyDescription();
+
+        e.description = newDescription;
+        emit EventUpdated(eventId, "description");
+    }
+
+    function updateEventLocation(uint256 eventId, string memory newLocation) external {
+        Event storage e = events[eventId];
+        if (e.id == 0) revert Errors.EventDoesNotExist(eventId);
+        if (msg.sender != e.organizer) revert Errors.NotAuthorized();
+        if (block.timestamp >= e.startDate) revert Errors.UpdateNotAllowedAfterStart();
+        if (bytes(newLocation).length == 0) revert Errors.EmptyLocation();
+
+        e.location = newLocation;
+        emit EventUpdated(eventId, "location");
+    }
+
+    function updateEventStartDate(uint256 eventId, uint256 newStartDate) external {
+        Event storage e = events[eventId];
+        if (e.id == 0) revert Errors.EventDoesNotExist(eventId);
+        if (msg.sender != e.organizer) revert Errors.NotAuthorized();
+        if (block.timestamp >= e.startDate) revert Errors.UpdateNotAllowedAfterStart();
+        if (newStartDate <= block.timestamp || newStartDate >= e.endDate) revert Errors.InvalidEventDates(newStartDate, e.endDate);
+
+        e.startDate = newStartDate;
+        emit EventUpdated(eventId, "startDate");
+    }
+
+    function updateEventEndDate(uint256 eventId, uint256 newEndDate) external {
+        Event storage e = events[eventId];
+        if (e.id == 0) revert Errors.EventDoesNotExist(eventId);
+        if (msg.sender != e.organizer) revert Errors.NotAuthorized();
+        if (block.timestamp >= e.startDate) revert Errors.UpdateNotAllowedAfterStart();
+        if (newEndDate <= e.startDate) revert Errors.InvalidEventDates(e.startDate, newEndDate);
+
+        e.endDate = newEndDate;
+        emit EventUpdated(eventId, "endDate");
+    }
+
+    function updateEventExpectedAttendees(uint256 eventId, uint256 newExpectedAttendees) external {
+        Event storage e = events[eventId];
+        if (e.id == 0) revert Errors.EventDoesNotExist(eventId);
+        if (msg.sender != e.organizer) revert Errors.NotAuthorized();
+        if (block.timestamp >= e.startDate) revert Errors.UpdateNotAllowedAfterStart();
+        if (newExpectedAttendees == 0) revert Errors.InvalidExpectedAttendees(newExpectedAttendees);
+        if (newExpectedAttendees < e.userRegCount) revert Errors.CannotReduceAttendeesBelowCurrent();
+
+        e.expectedAttendees = newExpectedAttendees;
+        emit EventUpdated(eventId, "expectedAttendees");
     }
 
     function getEvent(uint256 eventId) external view returns (Event memory) {
@@ -152,15 +208,31 @@ contract EventTicketing is Ownable, ReentrancyGuard {
         if (t.nft == address(0)) revert Errors.InvalidTicketCategory();
         if (e.isPaid != (t.price > 0)) revert Errors.InvalidTicketCategory();
         if (msg.value != t.price) revert Errors.InsufficientPayment();
-        if (isRegistered[eventId][msg.sender]) revert Errors.AlreadyRegistered();
 
         ITicket_NFT(t.nft).safeMint(msg.sender);
-        isRegistered[eventId][msg.sender] = true;
-        userTicketCategory[eventId][msg.sender] = category;
         e.userRegCount++;
         totalPurchasedTickets++;
         organiserRevBal[e.organizer][eventId] += msg.value;
         emit TicketPurchased(eventId, msg.sender, msg.sender, category);
+    }
+
+    function purchaseTickets(uint256 eventId, PaidTicketCategory category, uint256 quantity) external payable {
+        if (quantity == 0) revert Errors.InvalidQuantity();
+        Event storage e = events[eventId];
+        if (e.id == 0) revert Errors.EventDoesNotExist(eventId);
+        if (block.timestamp >= e.endDate) revert Errors.EventEnded();
+        if (e.userRegCount + quantity > e.expectedAttendees) revert Errors.NoSlotsAvailable();
+
+        Ticket memory t = eventTickets[eventId][category];
+        if (t.nft == address(0)) revert Errors.InvalidTicketCategory();
+        if (e.isPaid != (t.price > 0)) revert Errors.InvalidTicketCategory();
+        if (msg.value != t.price * quantity) revert Errors.InsufficientPayment();
+
+        ITicket_NFT(t.nft).batchMint(msg.sender, quantity);
+        e.userRegCount += quantity;
+        totalPurchasedTickets += quantity;
+        organiserRevBal[e.organizer][eventId] += msg.value;
+        emit TicketPurchased(eventId, msg.sender, msg.sender, category); // Emitting single event for batch; could loop if needed
     }
 
     function purchaseMultipleTickets(uint256 eventId, PaidTicketCategory category, address[] calldata recipients) external payable {
@@ -178,12 +250,10 @@ contract EventTicketing is Ownable, ReentrancyGuard {
         uint256 successful = 0;
         for (uint256 i = 0; i < num; i++) {
             address recipient = recipients[i];
-            if (recipient == address(0) || isRegistered[eventId][recipient]) continue;
+            if (recipient == address(0)) continue;
             if (e.userRegCount >= e.expectedAttendees) break;
 
             ITicket_NFT(t.nft).safeMint(recipient);
-            isRegistered[eventId][recipient] = true;
-            userTicketCategory[eventId][recipient] = category;
             e.userRegCount++;
             totalPurchasedTickets++;
             emit TicketPurchased(eventId, msg.sender, recipient, category);
@@ -218,22 +288,19 @@ contract EventTicketing is Ownable, ReentrancyGuard {
         if (block.timestamp > e.endDate) return false;
         if (isVerified[eventId][attendee]) return false;
 
-        bool owns = false;
+        uint256 totalBalance = 0;
         for (uint256 i = 0; i < 3; i++) {
             PaidTicketCategory cat = PaidTicketCategory(i);
             Ticket memory tk = eventTickets[eventId][cat];
             if (tk.nft == address(0)) continue;
             try ITicket_NFT(tk.nft).balanceOf(attendee) returns (uint256 bal) {
-                if (bal > 0) {
-                    owns = true;
-                    break;
-                }
+                totalBalance += bal;
             } catch {}
         }
-        if (!owns) return false;
+        if (totalBalance == 0) return false;
 
         isVerified[eventId][attendee] = true;
-        e.verifiedAttendeesCount++;
+        e.verifiedAttendeesCount += 1; // Still increment by 1 for unique attendee, even with multiple tickets
         emit AttendeeVerified(eventId, attendee);
         return true;
     }

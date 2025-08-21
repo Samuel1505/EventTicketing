@@ -8,12 +8,12 @@ library Errors {
     error InvalidExpectedAttendees(uint256 attendees);
     error EmptyTitle();
     error EmptyDescription();
+    error EmptyLocation();
     error InvalidTicketCategory();
     error TicketCategoryAlreadyExists();
     error InvalidTicketFee();
     error EventEnded();
     error InsufficientPayment();
-    error AlreadyRegistered();
     error NoSlotsAvailable();
     error EventNotStarted();
     error EventHasEnded();
@@ -24,4 +24,7 @@ library Errors {
     error LowAttendanceRate();
     error NotAuthorized();
     error TransferFailed();
+    error UpdateNotAllowedAfterStart();
+    error CannotReduceAttendeesBelowCurrent();
+    error InvalidQuantity();
 }
