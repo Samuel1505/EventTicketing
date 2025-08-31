@@ -2,13 +2,14 @@
 pragma solidity ^0.8.20;
 
 import "./interfaces/ITicket_NFT.sol";
+import "./Ticket_NFT.sol";
 import "./libaries/Errors.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 
-contract EventTicketing is Ownable, ReentrancyGuard {
+contract EventTicketing is Ownable(msg.sender), ReentrancyGuard {
     using Strings for uint256;
 
     enum PaidTicketCategory { NONE, REGULAR, VIP }
