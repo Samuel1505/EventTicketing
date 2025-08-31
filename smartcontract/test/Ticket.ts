@@ -4,6 +4,7 @@ import {
   loadFixture,
   time,
   setBalance,
+  mine,
 } from "@nomicfoundation/hardhat-toolbox/network-helpers";
 
 enum PaidTicketCategory {
@@ -78,7 +79,7 @@ describe("EventTicketing", function () {
     const rc = await tx.wait();
     // eventId increments from 1
     const eventId = await ticketing.totalEventsOrganized();
-    return Number(eventId);
+    return eventId;
   }
 
   async function getTicket(
@@ -149,8 +150,11 @@ describe("EventTicketing", function () {
       isPaid: true,
     });
 
-    const e1 = await ticketing.getEvent(id1);
-    expect(e1.id).to.eq(id1);
+    const data1 = ticketing.interface.encodeFunctionData("getEvent", [id1]);
+    const tx1 = { to: await ticketing.getAddress(), data: data1 };
+    const raw1 = await ethers.provider.call(tx1);
+    const e1 = ticketing.interface.decodeFunctionResult("getEvent", raw1)[0];
+    expect(e1.id).to.equal(id1);
 
     await expect(ticketing.getEvent(999)).to.be.revertedWithCustomError(
       ticketing,
@@ -159,8 +163,8 @@ describe("EventTicketing", function () {
 
     const all = await ticketing.getAllEvents();
     expect(all.length).to.eq(2);
-    expect(all[0].id).to.eq(id1);
-    expect(all[1].id).to.eq(id2);
+    expect(all[0].id).to.equal(id1);
+    expect(all[1].id).to.equal(id2);
   });
 
   it("updateEvent* succeed before start and revert after start / on invalids / by non-organizer", async () => {
@@ -245,7 +249,7 @@ describe("EventTicketing", function () {
   });
 
   it("cannot reduce expected attendees below current registrations", async () => {
-    const { ticketing, organizer, buyer, start, end } = await loadFixture(
+    const { ticketing, organizer, buyer, buyer2, start, end } = await loadFixture(
       deployFixture
     );
     const id = await createEvent(ticketing, organizer, {
@@ -267,6 +271,12 @@ describe("EventTicketing", function () {
     // One registration
     await ticketing
       .connect(buyer)
+      .purchaseTicket(id, PaidTicketCategory.REGULAR, {
+        value: ethers.parseEther("1"),
+      });
+
+    await ticketing
+      .connect(buyer2)
       .purchaseTicket(id, PaidTicketCategory.REGULAR, {
         value: ethers.parseEther("1"),
       });
@@ -532,6 +542,7 @@ describe("EventTicketing", function () {
 
     // Move into the event window
     await time.setNextBlockTimestamp(start + 10);
+    await mine();
 
     await expect(ticketing.connect(buyer).verifyAttendance(id))
       .to.emit(ticketing, "AttendeeVerified")
@@ -670,6 +681,7 @@ describe("EventTicketing", function () {
     await time.setNextBlockTimestamp(start + 10);
     await ticketing.connect(buyer).verifyAttendance(id);
     await time.setNextBlockTimestamp(end + 1);
+    await mine();
 
     r = await ticketing.connect(organizer).canReleaseRevenue(id);
     expect(r.attendanceRate).to.eq(100);
@@ -719,9 +731,10 @@ describe("EventTicketing", function () {
     await ticketing.connect(buyer).verifyAttendance(b);
 
     await time.setNextBlockTimestamp(end + 10);
+    await mine();
 
     const list = await ticketing.connect(owner).getEventsRequiringManualRelease();
-    expect(list.map((x: any) => Number(x))).to.include(a).and.not.include(b);
+    expect(list).to.include(a).and.not.include(b);
   });
 
   it("multicall delegates multiple updates in one tx", async () => {
@@ -742,7 +755,10 @@ describe("EventTicketing", function () {
 
     await ticketing.connect(organizer).multicall(calls);
 
-    const e = await ticketing.getEvent(id);
+    const data = ticketing.interface.encodeFunctionData("getEvent", [id]);
+    const tx = { to: await ticketing.getAddress(), data };
+    const raw = await ethers.provider.call(tx);
+    const e = ticketing.interface.decodeFunctionResult("getEvent", raw)[0];
     expect(e.title).to.eq("BatchTitle");
     expect(e.description).to.eq("BatchDesc");
   });
