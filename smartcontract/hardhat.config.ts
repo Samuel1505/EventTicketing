@@ -2,6 +2,8 @@ import { HardhatUserConfig } from "hardhat/config";
 import "@nomicfoundation/hardhat-toolbox";
 import "dotenv/config";
 
+const { ALCHEMY_SEPOLIA_API_KEY_URL, ACCOUNT_PRIVATE_KEY, ETHERSCAN_API_KEY} = process.env;
+
 const config: HardhatUserConfig = {
   solidity: {
     version: "0.8.28",
@@ -15,8 +17,23 @@ const config: HardhatUserConfig = {
       },
     },
   },
-  // networks: {
-  //   sonicTestnet: {
+networks:{
+    sepolia:{
+      url: ALCHEMY_SEPOLIA_API_KEY_URL,
+      accounts: [`0x${ACCOUNT_PRIVATE_KEY}`]
+    },
+
+  },
+  etherscan: {
+    apiKey: {
+      sepolia: ETHERSCAN_API_KEY || ""
+    },
+  },
+};
+
+export default config;
+
+// sonicTestnet: {
   //     url: "https://rpc.testnet.soniclabs.com",
   //     chainId: 64165,
   //     accounts: [process.env.SONIC_PRIVATE_KEY || ""],
@@ -37,6 +54,3 @@ const config: HardhatUserConfig = {
   //     },
   //   ],
   // },
-};
-
-export default config;
