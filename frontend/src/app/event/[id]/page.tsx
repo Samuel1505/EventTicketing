@@ -73,7 +73,7 @@ export default function EventDetailPage() {
   const [ticketQuantity, setTicketQuantity] = useState(1)
 
   const eventId = params.id as string
-  const event = eventData[eventId as keyof typeof eventData]
+  const event = eventData[eventId as unknown as keyof typeof eventData]
 
   if (!event) {
     return (
