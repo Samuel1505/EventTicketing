@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import Link from "next/link"
+import { ConnectButton } from '@rainbow-me/rainbowkit';
 
 export default function LandingPage() {
   return (
@@ -9,7 +10,7 @@ export default function LandingPage() {
       <header className="border-b border-border">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
-            <div className="text-2xl font-bold text-primary">leepoo</div>
+            <div className="text-2xl font-bold text-primary">Leepoo</div>
             <nav className="flex items-center gap-4">
               <Button variant="ghost" asChild>
                 <Link href="/explore">Explore Events</Link>
@@ -28,11 +29,13 @@ export default function LandingPage() {
       {/* Hero Section */}
       <section className="py-20 px-4">
         <div className="container mx-auto text-center">
-          <p className="text-lg text-muted-foreground mb-4">NFT powered event</p>
-          <h1 className="text-4xl md:text-6xl font-bold text-balance mb-8">The future of blockchain event onchain</h1>
+          <p className="text-lg text-muted-foreground mb-4">NFT powered event </p>
+          <h1 className="text-4xl md:text-6xl font-bold text-balance mb-8">The future of blockchain <br /> event onchain.</h1>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <br />
+            <br />
             <Button size="lg" className="text-lg px-8">
-              Connect Wallet
+               <ConnectButton />
             </Button>
             <Button size="lg" variant="outline" className="text-lg px-8 bg-transparent" asChild>
               <Link href="/dashboard">Dashboard</Link>
@@ -224,7 +227,7 @@ export default function LandingPage() {
             </div>
           </div>
           <div className="border-t border-border mt-8 pt-8 flex flex-col md:flex-row justify-between items-center">
-            <p className="text-sm text-muted-foreground">© 2024 leepoo. All rights reserved.</p>
+            <p className="text-sm text-muted-foreground">© 2025 leepoo. All rights reserved.</p>
             <div className="flex gap-4 mt-4 md:mt-0">
               <Link href="#" className="text-muted-foreground hover:text-foreground">
                 <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
