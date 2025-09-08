@@ -2,7 +2,7 @@ import { HardhatUserConfig } from "hardhat/config";
 import "@nomicfoundation/hardhat-toolbox";
 import "dotenv/config";
 
-const { ALCHEMY_SEPOLIA_API_KEY_URL, ACCOUNT_PRIVATE_KEY, ETHERSCAN_API_KEY} = process.env;
+const { ALCHEMY_SEPOLIA_API_KEY_URL, ACCOUNT_PRIVATE_KEY, ETHERSCAN_API_KEY } = process.env;
 
 const config: HardhatUserConfig = {
   solidity: {
@@ -17,20 +17,21 @@ const config: HardhatUserConfig = {
       },
     },
   },
-  networks:{
-    sepolia:{
+  networks: {
+    sepolia: {
       url: ALCHEMY_SEPOLIA_API_KEY_URL,
-      accounts: [`0x${ACCOUNT_PRIVATE_KEY}`]
+      accounts: [`0x${ACCOUNT_PRIVATE_KEY}`],
     },
-    sonicTestnet: {
-      url: ALCHEMY_SEPOLIA_API_KEY_URL,
-      accounts: [`0x${ACCOUNT_PRIVATE_KEY}`]
+    somniaTestnet: {
+      url: "https://dream-rpc.somnia.network", // <-- Replace with official Somnia Testnet RPC
+      accounts: [`0x${ACCOUNT_PRIVATE_KEY}`],
+      chainId: 50312, // <-- Replace with Somnia Testnet chainId if different
     },
   },
   etherscan: {
     apiKey: {
       sepolia: ETHERSCAN_API_KEY || "",
-      sonicTestnet: ETHERSCAN_API_KEY || ""
+      somniaTestnet: ETHERSCAN_API_KEY || "",
     },
   },
 };
