@@ -21,6 +21,7 @@ export default function CreateEventPage() {
     startTime: "",
     endDate: "",
     endTime: "",
+    expectedAttendees: "",
     eventBanner: null as File | null,
   })
 
@@ -71,7 +72,8 @@ export default function CreateEventPage() {
       formData.startDate &&
       formData.startTime &&
       formData.endDate &&
-      formData.endTime
+      formData.endTime &&
+      formData.expectedAttendees
     )
   }
 
@@ -181,6 +183,21 @@ export default function CreateEventPage() {
                     required
                   />
                 </div>
+              </div>
+
+              {/* Expected Attendees */}
+              <div className="space-y-2">
+                <Label htmlFor="expectedAttendees">Expected Attendees *</Label>
+                <Input
+                  id="expectedAttendees"
+                  name="expectedAttendees"
+                  type="number"
+                  min="1"
+                  placeholder="Enter expected number of attendees"
+                  value={formData.expectedAttendees}
+                  onChange={handleInputChange}
+                  required
+                />
               </div>
 
               {/* Event Banner */}

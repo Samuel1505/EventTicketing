@@ -85,7 +85,7 @@ export function WalletCard() {
                 Disconnect
               </Button>
             </div>
-          </div>
+          </div> 
         ) : (
           <div className="text-center py-4">
             <p className="text-muted-foreground mb-4">No wallet connected</p>

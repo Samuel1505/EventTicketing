@@ -1,53 +1,74 @@
+"use client"
+
+import { useEffect, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
 import { Sidebar } from "@/components/dashboard/sidebar"
 import { WalletCard } from "@/components/dashboard/wallet-card"
 import Link from "next/link"
+import { ethers } from "ethers"
+import {contractAddress, contractABI } from "../../contractAddressandAbi"
 
-// Mock data for demonstration
-const upcomingEvents = [
-  {
-    id: 1,
-    title: "Blockchain Conference 2024",
-    date: "Dec 15, 2024",
-    time: "10:00 AM",
-    location: "San Francisco, CA",
-    ticketType: "VIP",
-    image: "/blockchain-conference.png",
-  },
-  {
-    id: 2,
-    title: "NFT Art Exhibition",
-    date: "Dec 20, 2024",
-    time: "6:00 PM",
-    location: "New York, NY",
-    ticketType: "Regular",
-    image: "/nft-art-exhibition.png",
-  },
-]
-
-const pastEvents = [
-  {
-    id: 3,
-    title: "Web3 Summit",
-    date: "Nov 10, 2024",
-    time: "9:00 AM",
-    location: "Austin, TX",
-    ticketType: "Regular",
-    image: "/web3-summit.png",
-  },
-  {
-    id: 4,
-    title: "DeFi Workshop",
-    date: "Oct 25, 2024",
-    time: "2:00 PM",
-    location: "Miami, FL",
-    ticketType: "VIP",
-    image: "/defi-workshop.png",
-  },
-]
 
 export default function DashboardPage() {
+  const [upcomingEvents, setUpcomingEvents] = useState<any[]>([])
+  const [pastEvents, setPastEvents] = useState<any[]>([])
+
+  useEffect(() => {
+    const fetchEvents = async () => {
+      try {
+        if (!window.ethereum) return
+
+        const provider = new ethers.BrowserProvider(window.ethereum)
+        await provider.send("eth_requestAccounts", [])
+        const signer = await provider.getSigner()
+        const userAddress = await signer.getAddress()
+        const contract = new ethers.Contract(contractAddress, contractABI, provider)
+
+        const allEvents = await contract.getAllEvents()
+        const now = Math.floor(Date.now() / 1000)
+
+        const upcoming: any[] = []
+        const past: any[] = []
+
+        allEvents.forEach((ev: any) => {
+          if (ev.organizer.toLowerCase() === userAddress.toLowerCase()) {
+            const startDate = new Date(Number(ev.startDate) * 1000)
+            const event = {
+              id: Number(ev.id),
+              title: ev.title,
+              date: startDate.toLocaleDateString("en-US", {
+                weekday: "long",
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+              }),
+              time: startDate.toLocaleTimeString("en-US", {
+                hour: "numeric",
+                minute: "2-digit",
+                hour12: true,
+              }),
+              location: ev.location,
+              image: "/placeholder.svg", // TODO: Replace with actual banner URL if stored
+            }
+
+            if (Number(ev.endDate) > now) {
+              upcoming.push(event)
+            } else {
+              past.push(event)
+            }
+          }
+        })
+
+        setUpcomingEvents(upcoming)
+        setPastEvents(past)
+      } catch (error) {
+        console.error("Failed to fetch events:", error)
+      }
+    }
+
+    fetchEvents()
+  }, [])
+
   return (
     <div className="flex min-h-screen bg-background">
       <Sidebar />
@@ -66,7 +87,7 @@ export default function DashboardPage() {
                   <Card className="cursor-pointer hover:shadow-lg transition-shadow">
                     <CardHeader className="p-0">
                       <img
-                        src={event.image || "/placeholder.svg"}
+                        src={event.image}
                         alt={event.title}
                         className="w-full h-32 object-cover rounded-t-lg"
                       />
@@ -74,7 +95,7 @@ export default function DashboardPage() {
                     <CardContent className="p-4">
                       <div className="flex justify-between items-start mb-2">
                         <CardTitle className="text-lg">{event.title}</CardTitle>
-                        <Badge variant={event.ticketType === "VIP" ? "default" : "secondary"}>{event.ticketType}</Badge>
+                        {/* Removed badge since it's organized events */}
                       </div>
                       <p className="text-sm text-muted-foreground mb-1">
                         {event.date} at {event.time}
@@ -104,7 +125,7 @@ export default function DashboardPage() {
                   <Card className="cursor-pointer hover:shadow-lg transition-shadow opacity-75">
                     <CardHeader className="p-0">
                       <img
-                        src={event.image || "/placeholder.svg"}
+                        src={event.image}
                         alt={event.title}
                         className="w-full h-32 object-cover rounded-t-lg"
                       />
@@ -112,7 +133,7 @@ export default function DashboardPage() {
                     <CardContent className="p-4">
                       <div className="flex justify-between items-start mb-2">
                         <CardTitle className="text-lg">{event.title}</CardTitle>
-                        <Badge variant="outline">{event.ticketType}</Badge>
+                        {/* Removed badge */}
                       </div>
                       <p className="text-sm text-muted-foreground mb-1">
                         {event.date} at {event.time}
