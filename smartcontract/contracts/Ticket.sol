@@ -32,6 +32,7 @@ contract EventTicketing is Ownable(msg.sender), ReentrancyGuard {
         uint256 userRegCount;
         uint256 verifiedAttendeesCount;
         bool revenueReleased;
+        string bannerCID;
     }
 
     uint256 public constant MINIMUM_ATTENDANCE_RATE = 60;
@@ -59,13 +60,15 @@ contract EventTicketing is Ownable(msg.sender), ReentrancyGuard {
         uint256 _startDate,
         uint256 _endDate,
         uint256 _expectedAttendees,
-        bool _isPaid
+        bool _isPaid,
+        string memory _bannerCID
     ) external returns (uint256) {
         if (bytes(_title).length == 0) revert Errors.EmptyTitle();
         if (bytes(_description).length == 0) revert Errors.EmptyDescription();
         if (bytes(_location).length == 0) revert Errors.EmptyLocation();
-        if (_startDate >= _endDate || _startDate <= block.timestamp) revert Errors.InvalidEventDates(_startDate, _endDate);
+        if (_startDate >= _endDate) revert Errors.InvalidEventDates(_startDate, _endDate);
         if (_expectedAttendees == 0) revert Errors.InvalidExpectedAttendees(_expectedAttendees);
+        if (bytes(_bannerCID).length == 0) revert Errors.EmptyField("bannerCID");
 
         totalEventsOrganized++;
         uint256 eventId = totalEventsOrganized;
@@ -81,7 +84,8 @@ contract EventTicketing is Ownable(msg.sender), ReentrancyGuard {
             organizer: msg.sender,
             userRegCount: 0,
             verifiedAttendeesCount: 0,
-            revenueReleased: false
+            revenueReleased: false,
+            bannerCID: _bannerCID
         });
 
         emit EventOrganized(eventId, msg.sender);

@@ -1,4 +1,4 @@
-export const contractAddress = "0x3C24c652B7b9EcD0CAD86df5E58a4B2f006602C0";
+export const contractAddress = "0x62e325C4aaB5f3808DCAaFb71d932f4E97455368";
 export const contractABI =
 [
   {
@@ -14,6 +14,17 @@ export const contractABI =
   {
     "inputs": [],
     "name": "EmptyDescription",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "string",
+        "name": "field",
+        "type": "string"
+      }
+    ],
+    "name": "EmptyField",
     "type": "error"
   },
   {
@@ -410,6 +421,11 @@ export const contractABI =
         "internalType": "bool",
         "name": "_isPaid",
         "type": "bool"
+      },
+      {
+        "internalType": "string",
+        "name": "_bannerCID",
+        "type": "string"
       }
     ],
     "name": "createEvent",
@@ -544,6 +560,11 @@ export const contractABI =
         "internalType": "bool",
         "name": "revenueReleased",
         "type": "bool"
+      },
+      {
+        "internalType": "string",
+        "name": "bannerCID",
+        "type": "string"
       }
     ],
     "stateMutability": "view",
@@ -614,6 +635,11 @@ export const contractABI =
             "internalType": "bool",
             "name": "revenueReleased",
             "type": "bool"
+          },
+          {
+            "internalType": "string",
+            "name": "bannerCID",
+            "type": "string"
           }
         ],
         "internalType": "struct EventTicketing.Event[]",
@@ -695,6 +721,11 @@ export const contractABI =
             "internalType": "bool",
             "name": "revenueReleased",
             "type": "bool"
+          },
+          {
+            "internalType": "string",
+            "name": "bannerCID",
+            "type": "string"
           }
         ],
         "internalType": "struct EventTicketing.Event",

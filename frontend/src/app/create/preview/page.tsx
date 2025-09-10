@@ -10,6 +10,7 @@ import { Sidebar } from "@/components/dashboard/sidebar"
 import { useRouter } from "next/navigation"
 import { ethers } from "ethers"
 import {contractAddress, contractABI } from "../../../contractAddressandAbi"
+import { ThirdwebStorage } from "@thirdweb-dev/storage"
 
 interface EventFormData {
   eventName: string
@@ -20,7 +21,7 @@ interface EventFormData {
   endDate: string
   endTime: string
   expectedAttendees: string
-  bannerPreview: string | null
+  bannerPreview: string | null 
 }
 
 export default function PreviewEventPage() {
@@ -31,10 +32,15 @@ export default function PreviewEventPage() {
   const [vipPrice, setVipPrice] = useState("")
   const [isPublishing, setIsPublishing] = useState(false)
 
+  // Initialize thirdweb storage with Client ID (replace with your actual ID from thirdweb dashboard)
+  const CLIENT_ID = "edfebecb8105216e28982922a03a5064" // Get from https://thirdweb.com/dashboard/settings/api-keys
+  const storage = new ThirdwebStorage({ clientId: CLIENT_ID })
+
   useEffect(() => {
     const storedData = localStorage.getItem("eventFormData")
     if (storedData) {
-      setEventData(JSON.parse(storedData))
+      const parsedData = JSON.parse(storedData)
+      setEventData(parsedData)
     } else {
       router.push("/create")
     }
@@ -76,7 +82,7 @@ export default function PreviewEventPage() {
     const ethereum = getEthereumProvider()
     try {
       const chainId = await ethereum.request({ method: 'eth_chainId' })
-      const somniaTestnetChainId = '0xc488' // Somnia Shannon Testnet chain ID (50312)
+      const somniaTestnetChainId = '0xc488'
 
       if (chainId !== somniaTestnetChainId) {
         try {
@@ -86,17 +92,12 @@ export default function PreviewEventPage() {
           })
         } catch (switchError: any) {
           if (switchError.code === 4902) {
-            // Add Somnia Testnet if not present
             await ethereum.request({
               method: 'wallet_addEthereumChain',
               params: [{
                 chainId: somniaTestnetChainId,
                 chainName: 'Somnia Shannon Testnet',
-                nativeCurrency: {
-                  name: 'Somnia Testnet Token',
-                  symbol: 'STT',
-                  decimals: 18,
-                },
+                nativeCurrency: { name: 'Somnia Testnet Token', symbol: 'STT', decimals: 18 },
                 rpcUrls: ['https://testnet-rpc.somnia.network'],
                 blockExplorerUrls: ['https://shannon-explorer.somnia.network'],
               }],
@@ -124,7 +125,7 @@ export default function PreviewEventPage() {
 
       const ethereum = getEthereumProvider()
       console.log('Creating provider...')
-      const provider = new ethers.BrowserProvider(ethereum)
+      const provider = new ethers.providers.Web3Provider(ethereum)
       console.log('Getting signer...')
       const signer = await provider.getSigner()
       console.log('Creating contract instance...')
@@ -137,7 +138,7 @@ export default function PreviewEventPage() {
         throw new Error("Invalid date/time format")
       }
 
-      const startTimestamp = Math.floor(startDateTime.getTime() / 1000)
+      const startTimestamp = Math.floor(startDateTime.getTime() / 1000 ) + 86400;
       const endTimestamp = Math.floor(endDateTime.getTime() / 1000)
       const expected = parseInt(eventData.expectedAttendees)
       
@@ -151,7 +152,48 @@ export default function PreviewEventPage() {
         throw new Error("Both regular and VIP prices are required for paid events")
       }
 
-      console.log('Creating event transaction...')
+      // Upload banner to IPFS (improved base64 handling)
+      let bannerCID = ""
+      if (eventData.bannerPreview) {
+        console.log('Uploading base64 banner to IPFS...')
+        try {
+          // Convert base64 to Blob/File (reliable for data URLs)
+          const base64Data = eventData.bannerPreview.split(',')[1] // Remove 'data:image/...;base64,' prefix
+          const byteCharacters = atob(base64Data)
+          const byteNumbers = new Array(byteCharacters.length)
+          for (let i = 0; i < byteCharacters.length; i++) {
+            byteNumbers[i] = byteCharacters.charCodeAt(i)
+          }
+          const byteArray = new Uint8Array(byteNumbers)
+          const blob = new Blob([byteArray], { type: 'image/jpeg' }) // Adjust type if needed (e.g., 'image/png')
+          const file = new File([blob], "event-banner.jpg", { type: 'image/jpeg' })
+
+          const uploadResult = await storage.upload(file)
+          bannerCID = storage.resolveScheme(uploadResult) // e.g., 'ipfs://Qm...'
+          console.log('Banner uploaded to IPFS with CID:', bannerCID)
+        } catch (uploadError) {
+          console.error('IPFS upload failed:', uploadError)
+          const errorMessage = typeof uploadError === "object" && uploadError !== null && "message" in uploadError
+            ? (uploadError as { message: string }).message
+            : String(uploadError)
+          throw new Error(`Failed to upload banner to IPFS: ${errorMessage}`)
+        }
+      } else {
+        // Optional: Allow publishing without banner
+        bannerCID = ""
+        console.log('No banner provided, skipping IPFS upload')
+      }
+
+      console.log('Creating event transaction with params:', {
+        eventName: eventData.eventName,
+        eventDescription: eventData.eventDescription,
+        location: eventData.location,
+        startTimestamp,
+        endTimestamp,
+        expected,
+        isPaid,
+        bannerCID
+      })
       const createEventTx = await contract.createEvent(
         eventData.eventName,
         eventData.eventDescription,
@@ -160,58 +202,61 @@ export default function PreviewEventPage() {
         endTimestamp,
         expected,
         isPaid,
-        { value: 0 } // Ensure no STT is sent beyond gas
+        bannerCID,
+        { value: 0, gasLimit: 500000 }
       )
 
-      console.log('Waiting for transaction confirmation...')
+      console.log('Waiting for transaction confirmation. Tx hash:', createEventTx.hash)
       const receipt = await createEventTx.wait()
       
       if (!receipt) {
         throw new Error("Transaction failed - no receipt received")
       }
 
+      console.log('Transaction receipt:', JSON.stringify(receipt, null, 2))
+
       console.log('Parsing event ID from logs...')
-      const eventInterface = new ethers.Interface([
-        "event EventOrganized(uint256 indexed eventId, address indexed organizer)"
-      ])
-      
+      const eventInterface = new ethers.Interface(contractABI)
       let eventId
       for (const log of receipt.logs) {
         try {
+          console.log('Parsing log:', log)
           const parsed = eventInterface.parseLog({
             topics: log.topics,
             data: log.data
           })
           if (parsed?.name === "EventOrganized") {
             eventId = parsed.args.eventId
+            console.log('Found EventOrganized with eventId:', eventId.toString())
             break
           }
         } catch (parseError) {
+          console.warn('Failed to parse log:', parseError)
           continue
         }
       }
 
       if (!eventId) {
-        throw new Error("Failed to extract event ID from transaction logs")
+        throw new Error("Failed to extract event ID from transaction logs. Check contract deployment and ABI.")
       }
 
       console.log('Event created with ID:', eventId.toString())
 
       console.log('Creating tickets...')
       if (isPaid) {
-        const regularWei = ethers.parseEther(regularPrice)
-        const vipWei = ethers.parseEther(vipPrice)
+        const regularWei = ethers.utils.parseEther(regularPrice)
+        const vipWei = ethers.utils.parseEther(vipPrice)
         
         console.log('Creating regular ticket...')
-        const regularTicketTx = await contract.createTicket(eventId, 0, regularWei, { value: 0 })
+        const regularTicketTx = await contract.createTicket(eventId, 1, regularWei, { value: 0, gasLimit: 1000000 })
         await regularTicketTx.wait()
         
         console.log('Creating VIP ticket...')
-        const vipTicketTx = await contract.createTicket(eventId, 1, vipWei, { value: 0 })
+        const vipTicketTx = await contract.createTicket(eventId, 2, vipWei, { value: 0, gasLimit: 1000000 })
         await vipTicketTx.wait()
       } else {
         console.log('Creating free ticket...')
-        const freeTicketTx = await contract.createTicket(eventId, 0, BigInt(0), { value: 0 })
+        const freeTicketTx = await contract.createTicket(eventId, 0, BigInt(0), { value: 0, gasLimit: 1000000 })
         await freeTicketTx.wait()
       }
 

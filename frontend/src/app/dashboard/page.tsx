@@ -8,6 +8,21 @@ import Link from "next/link"
 import { ethers } from "ethers"
 import {contractAddress, contractABI } from "../../contractAddressandAbi"
 
+interface EventStruct {
+  id: bigint
+  title: string
+  description: string
+  location: string
+  startDate: bigint
+  endDate: bigint
+  expectedAttendees: bigint
+  isPaid: boolean
+  organizer: string
+  userRegCount: bigint
+  verifiedAttendeesCount: bigint
+  revenueReleased: boolean
+  bannerCID: string // New field from contract
+}
 
 export default function DashboardPage() {
   const [upcomingEvents, setUpcomingEvents] = useState<any[]>([])
@@ -18,9 +33,9 @@ export default function DashboardPage() {
       try {
         if (!window.ethereum) return
 
-        const provider = new ethers.BrowserProvider(window.ethereum)
+        const provider = new ethers.providers.Web3Provider(window.ethereum)
         await provider.send("eth_requestAccounts", [])
-        const signer = await provider.getSigner()
+        const signer = provider.getSigner()
         const userAddress = await signer.getAddress()
         const contract = new ethers.Contract(contractAddress, contractABI, provider)
 
@@ -30,9 +45,11 @@ export default function DashboardPage() {
         const upcoming: any[] = []
         const past: any[] = []
 
-        allEvents.forEach((ev: any) => {
+        allEvents.forEach((ev: EventStruct) => {
           if (ev.organizer.toLowerCase() === userAddress.toLowerCase()) {
             const startDate = new Date(Number(ev.startDate) * 1000)
+            // Convert bannerCID to IPFS URL
+            const bannerUrl = ev.bannerCID ? `https://ipfs.io/ipfs/${ev.bannerCID.replace('ipfs://', '')}` : "/placeholder.svg"
             const event = {
               id: Number(ev.id),
               title: ev.title,
@@ -48,7 +65,7 @@ export default function DashboardPage() {
                 hour12: true,
               }),
               location: ev.location,
-              image: "/placeholder.svg", // TODO: Replace with actual banner URL if stored
+              image: bannerUrl, // Use the IPFS URL or placeholder
             }
 
             if (Number(ev.endDate) > now) {
@@ -90,6 +107,9 @@ export default function DashboardPage() {
                         src={event.image}
                         alt={event.title}
                         className="w-full h-32 object-cover rounded-t-lg"
+                        onError={(e) => { // Fallback if IPFS fails to load
+                          e.currentTarget.src = "/placeholder.svg"
+                        }}
                       />
                     </CardHeader>
                     <CardContent className="p-4">
@@ -128,6 +148,9 @@ export default function DashboardPage() {
                         src={event.image}
                         alt={event.title}
                         className="w-full h-32 object-cover rounded-t-lg"
+                        onError={(e) => { // Fallback if IPFS fails to load
+                          e.currentTarget.src = "/placeholder.svg"
+                        }}
                       />
                     </CardHeader>
                     <CardContent className="p-4">
