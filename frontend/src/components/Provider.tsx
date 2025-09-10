@@ -11,8 +11,8 @@ const queryClient = new QueryClient();
 
 // RainbowKit config with Wagmi config included
 const config = getDefaultConfig({
-  appName: 'Lepoo',
-  projectId: 'leepoo-app',
+  appName: 'Leepoo',
+  projectId: process.env.NEXT_PUBLIC_PROJECT_ID!,
   chains: [somniaTestnet],
   ssr: true,
 });

@@ -21,6 +21,7 @@ export default function CreateEventPage() {
     startTime: "",
     endDate: "",
     endTime: "",
+    expectedAttendees : "",
     eventBanner: null as File | null,
   })
 
@@ -42,7 +43,7 @@ export default function CreateEventPage() {
         eventBanner: file,
       }))
 
-      // Create preview URL
+      // Create preview URL (base64)
       const reader = new FileReader()
       reader.onload = (e) => {
         setBannerPreview(e.target?.result as string)
@@ -53,11 +54,13 @@ export default function CreateEventPage() {
 
   const handleContinue = () => {
     // Store form data in localStorage for the preview page
+    // Store bannerPreview (base64) as bannerBase64 for IPFS upload in preview
     localStorage.setItem(
       "eventFormData",
       JSON.stringify({
         ...formData,
-        bannerPreview,
+        bannerPreview, // For display in preview
+        bannerBase64: bannerPreview, // Base64 for converting to File in preview if needed
       }),
     )
     router.push("/create/preview")
@@ -71,7 +74,9 @@ export default function CreateEventPage() {
       formData.startDate &&
       formData.startTime &&
       formData.endDate &&
-      formData.endTime
+      formData.endTime &&
+      formData.expectedAttendees &&
+      bannerPreview // Banner is now required
     )
   }
 
@@ -157,6 +162,7 @@ export default function CreateEventPage() {
                 </div>
               </div>
 
+
               {/* End Date and Time */}
               <div className="grid md:grid-cols-2 gap-4">
                 <div className="space-y-2">
@@ -181,11 +187,24 @@ export default function CreateEventPage() {
                     required
                   />
                 </div>
+                {/* Attendee */}
+              <div className="space-y-2">
+                <Label htmlFor="attendee">Expected Attendee *</Label>
+                <Input
+                  id="expectedAttendees"
+                  name="expectedAttendees"
+                  placeholder="Enter expected Attendees"
+                  value={formData.expectedAttendees}
+                  onChange={handleInputChange}
+                  required
+                />
+              </div>
               </div>
 
-              {/* Event Banner */}
+              {/* Event Banner - Now Required */}
               <div className="space-y-2">
-                <Label htmlFor="eventBanner">Event Banner</Label>
+                <Label htmlFor="eventBanner">Event Banner *</Label>
+                <p className="text-sm text-muted-foreground">Upload an image for your event (required by smart contract)</p>
                 <div className="space-y-4">
                   <Input
                     id="eventBanner"
@@ -194,6 +213,7 @@ export default function CreateEventPage() {
                     accept="image/*"
                     onChange={handleFileChange}
                     className="cursor-pointer"
+                    required
                   />
                   {bannerPreview && (
                     <div className="relative">
@@ -215,6 +235,17 @@ export default function CreateEventPage() {
                       </Button>
                     </div>
                   )}
+                  {!bannerPreview && (
+                    <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-8 text-center">
+                      <div className="text-muted-foreground">
+                        <svg className="mx-auto h-12 w-12 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        <p className="text-sm font-medium">Click to upload an event banner</p>
+                        <p className="text-xs">PNG, JPG, GIF up to 10MB</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -223,6 +254,11 @@ export default function CreateEventPage() {
                 <Button onClick={handleContinue} disabled={!isFormValid()} className="w-full" size="lg">
                   Continue to Preview
                 </Button>
+                {!isFormValid() && (
+                  <p className="text-sm text-muted-foreground mt-2 text-center">
+                    Please fill in all required fields including the event banner
+                  </p>
+                )}
               </div>
             </CardContent>
           </Card>

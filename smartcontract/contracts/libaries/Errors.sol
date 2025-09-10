@@ -27,4 +27,5 @@ library Errors {
     error UpdateNotAllowedAfterStart();
     error CannotReduceAttendeesBelowCurrent();
     error InvalidQuantity();
+    error EmptyField(string field);
 }
