@@ -1,190 +1,231 @@
-"use client"
+"use client";
 
-import { useEffect, useState } from "react"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { Label } from "@/components/ui/label"
-import { Input } from "@/components/ui/input"
-import { Sidebar } from "@/components/dashboard/sidebar"
-import { useRouter } from "next/navigation"
-import { ethers } from "ethers"
-import {contractAddress, contractABI } from "../../../contractAddressandAbi"
-import { ThirdwebStorage } from "@thirdweb-dev/storage"
+import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Sidebar } from "@/components/dashboard/sidebar";
+import { useRouter } from "next/navigation";
+import { 
+  useAccount, 
+  useConnect, 
+  useDisconnect, 
+  useWriteContract,
+  useWaitForTransactionReceipt,
+  useSwitchChain,
+  useChainId,
+  useReadContract
+} from 'wagmi';
+import { parseEther, parseEventLogs } from 'viem';
+import { contractAddress, contractABI } from "../../../contractAddressandAbi";
+import { ThirdwebStorage } from "@thirdweb-dev/storage";
 
 interface EventFormData {
-  eventName: string
-  eventDescription: string
-  location: string
-  startDate: string
-  startTime: string
-  endDate: string
-  endTime: string
-  expectedAttendees: string
-  bannerPreview: string | null 
+  eventName: string;
+  eventDescription: string;
+  location: string;
+  startDate: string;
+  startTime: string;
+  endDate: string;
+  endTime: string;
+  expectedAttendees: string;
+  bannerPreview: string | null;
 }
 
-export default function PreviewEventPage() {
-  const router = useRouter()
-  const [eventData, setEventData] = useState<EventFormData | null>(null)
-  const [ticketType, setTicketType] = useState("free")
-  const [regularPrice, setRegularPrice] = useState("")
-  const [vipPrice, setVipPrice] = useState("")
-  const [isPublishing, setIsPublishing] = useState(false)
+// Somnia testnet configuration
+const SOMNIA_TESTNET_ID = 50312;
 
-  // Initialize thirdweb storage with Client ID (replace with your actual ID from thirdweb dashboard)
-  const CLIENT_ID = "edfebecb8105216e28982922a03a5064" // Get from https://thirdweb.com/dashboard/settings/api-keys
-  const storage = new ThirdwebStorage({ clientId: CLIENT_ID })
+export default function PreviewEventPage() {
+  const router = useRouter();
+  const [eventData, setEventData] = useState<EventFormData | null>(null);
+  const [ticketType, setTicketType] = useState("free");
+  const [regularPrice, setRegularPrice] = useState("");
+  const [vipPrice, setVipPrice] = useState("");
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [createdEventId, setCreatedEventId] = useState<bigint | null>(null);
+
+  // Wagmi hooks
+  const { address, isConnected } = useAccount();
+  const { connect, connectors } = useConnect();
+  const { disconnect } = useDisconnect();
+  const { switchChain } = useSwitchChain();
+  const chainId = useChainId();
+  
+  const { 
+    writeContract, 
+    data: createEventHash, 
+    isPending: isCreatingEvent,
+    error: createEventError 
+  } = useWriteContract();
+
+  const { 
+    writeContract: writeTicketContract, 
+    data: createTicketHash, 
+    isPending: isCreatingTicket,
+    error: createTicketError 
+  } = useWriteContract();
+
+  // Wait for create event transaction
+  const { 
+    isLoading: isWaitingForEvent, 
+    isSuccess: isEventSuccess,
+    data: eventReceipt
+  } = useWaitForTransactionReceipt({
+    hash: createEventHash,
+  });
+
+  // Wait for create ticket transaction
+  const { 
+    isLoading: isWaitingForTicket, 
+    isSuccess: isTicketSuccess 
+  } = useWaitForTransactionReceipt({
+    hash: createTicketHash,
+  });
+
+  // Initialize thirdweb storage
+  const CLIENT_ID = "8ab9472dfcb0cf79e6f0a030ff00e643";
+  const storage = new ThirdwebStorage({ clientId: CLIENT_ID });
 
   useEffect(() => {
-    const storedData = localStorage.getItem("eventFormData")
+    const storedData = localStorage.getItem("eventFormData");
     if (storedData) {
-      const parsedData = JSON.parse(storedData)
-      setEventData(parsedData)
+      const parsedData = JSON.parse(storedData);
+      setEventData(parsedData);
     } else {
-      router.push("/create")
+      router.push("/create");
     }
-  }, [router])
+  }, [router]);
 
-  // Helper to select provider (resolves MetaMask/Coinbase conflict)
-  const getEthereumProvider = () => {
-    if (!window.ethereum) {
-      throw new Error("No wallet extension detected. Please install MetaMask or another Web3 wallet.")
-    }
-
-    let ethereum = window.ethereum
-    if (Array.isArray(window.ethereum.providers)) {
-      const metaMaskProvider = window.ethereum.providers.find((provider: any) => provider.isMetaMask)
-      if (metaMaskProvider) {
-        ethereum = metaMaskProvider
-        if (window.ethereum.setSelectedProvider) {
-          window.ethereum.setSelectedProvider(metaMaskProvider)
+  // Extract event ID from transaction receipt when event creation succeeds
+  useEffect(() => {
+    if (isEventSuccess && eventReceipt) {
+      try {
+        const logs = parseEventLogs({
+          abi: contractABI,
+          logs: eventReceipt.logs,
+          eventName: 'EventOrganized'
+        });
+        
+        if (logs.length > 0) {
+          const eventId = logs[0].args.eventId;
+          console.log("Event created with ID:", eventId.toString());
+          setCreatedEventId(eventId);
         }
+      } catch (error) {
+        console.error("Error parsing event logs:", error);
+      }
+    }
+  }, [isEventSuccess, eventReceipt]);
+
+  // Auto-create tickets after event creation
+  useEffect(() => {
+    if (createdEventId && !isCreatingTicket && !createTicketHash) {
+      createTickets(createdEventId);
+    }
+  }, [createdEventId, isCreatingTicket, createTicketHash]);
+
+  // Handle completion
+  useEffect(() => {
+    if (isTicketSuccess && createdEventId) {
+      localStorage.removeItem("eventFormData");
+      alert("Event published successfully!");
+      router.push("/dashboard");
+    }
+  }, [isTicketSuccess, createdEventId, router]);
+
+  const handleWalletConnection = async () => {
+    if (!isConnected) {
+      // Connect to MetaMask or first available connector
+      const metamask = connectors.find(c => c.name.includes('MetaMask'));
+      if (metamask) {
+        connect({ connector: metamask });
       } else {
-        ethereum = window.ethereum.providers[0]
+        connect({ connector: connectors[0] });
+      }
+      return;
+    }
+
+    // Switch to Somnia testnet if not already connected
+    if (chainId !== SOMNIA_TESTNET_ID) {
+      try {
+        await switchChain({ 
+          chainId: SOMNIA_TESTNET_ID 
+        });
+      } catch (error) {
+        console.error("Failed to switch network:", error);
+        alert("Please manually add Somnia Shannon Testnet to your wallet and switch to it.");
       }
     }
-    return ethereum
-  }
+  };
 
-  // Check wallet connection
-  const checkWalletConnection = async () => {
-    const ethereum = getEthereumProvider()
-    const accounts = await ethereum.request({ method: 'eth_accounts' })
-    if (accounts.length === 0) {
-      await ethereum.request({ method: 'eth_requestAccounts' })
-    }
-    return accounts
-  }
+  const uploadBannerToIPFS = async (bannerPreview: string) => {
+    if (!bannerPreview) return "";
 
-  // Switch to Somnia Testnet (chain ID: 0xc488)
-  const checkAndSwitchNetwork = async () => {
-    const ethereum = getEthereumProvider()
     try {
-      const chainId = await ethereum.request({ method: 'eth_chainId' })
-      const somniaTestnetChainId = '0xc488'
-
-      if (chainId !== somniaTestnetChainId) {
-        try {
-          await ethereum.request({
-            method: 'wallet_switchEthereumChain',
-            params: [{ chainId: somniaTestnetChainId }],
-          })
-        } catch (switchError: any) {
-          if (switchError.code === 4902) {
-            await ethereum.request({
-              method: 'wallet_addEthereumChain',
-              params: [{
-                chainId: somniaTestnetChainId,
-                chainName: 'Somnia Shannon Testnet',
-                nativeCurrency: { name: 'Somnia Testnet Token', symbol: 'STT', decimals: 18 },
-                rpcUrls: ['https://testnet-rpc.somnia.network'],
-                blockExplorerUrls: ['https://shannon-explorer.somnia.network'],
-              }],
-            })
-          } else {
-            throw switchError
-          }
-        }
+      const base64Data = bannerPreview.split(",")[1];
+      const byteCharacters = atob(base64Data);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
       }
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], { type: "image/jpeg" });
+      const file = new File([blob], "event-banner.jpg", { type: "image/jpeg" });
+
+      const uploadResult = await storage.upload(file);
+      const bannerCID = storage.resolveScheme(uploadResult);
+      console.log("Banner uploaded to IPFS with CID:", bannerCID);
+      return bannerCID;
     } catch (error) {
-      console.warn('Network switch failed:', error)
-      alert('Failed to switch to Somnia Testnet. Please add it manually in your wallet and claim STT tokens.')
+      console.error("IPFS upload failed:", error);
+      throw new Error(`Failed to upload banner to IPFS: ${error}`);
     }
-  }
+  };
 
   const handlePublish = async () => {
-    if (!eventData) return
+    if (!eventData) return;
 
-    setIsPublishing(true)
+    setIsPublishing(true);
 
     try {
-      console.log('Checking wallet connection...')
-      const accounts = await checkWalletConnection()
-      await checkAndSwitchNetwork()
+      // Check wallet connection and network
+      if (!isConnected) {
+        await handleWalletConnection();
+        return;
+      }
 
-      const ethereum = getEthereumProvider()
-      console.log('Creating provider...')
-      const provider = new ethers.providers.Web3Provider(ethereum)
-      console.log('Getting signer...')
-      const signer = await provider.getSigner()
-      console.log('Creating contract instance...')
-      const contract = new ethers.Contract(contractAddress, contractABI, signer)
+      if (chainId !== SOMNIA_TESTNET_ID) {
+        await handleWalletConnection();
+        return;
+      }
 
-      const startDateTime = new Date(`${eventData.startDate}T${eventData.startTime}:00`)
-      const endDateTime = new Date(`${eventData.endDate}T${eventData.endTime}:00`)
-      
+      // Validate event data
+      const startDateTime = new Date(`${eventData.startDate}T${eventData.startTime}:00`);
+      const endDateTime = new Date(`${eventData.endDate}T${eventData.endTime}:00`);
+
       if (isNaN(startDateTime.getTime()) || isNaN(endDateTime.getTime())) {
-        throw new Error("Invalid date/time format")
+        throw new Error("Invalid date/time format");
       }
 
-      const startTimestamp = Math.floor(startDateTime.getTime() / 1000 ) + 86400;
-      const endTimestamp = Math.floor(endDateTime.getTime() / 1000)
-      const expected = parseInt(eventData.expectedAttendees)
-      
+      const startTimestamp = Math.floor(startDateTime.getTime() / 1000);
+      const endTimestamp = Math.floor(endDateTime.getTime() / 1000);
+      const expected = parseInt(eventData.expectedAttendees);
+
       if (isNaN(expected) || expected <= 0) {
-        throw new Error("Invalid expected attendees number")
+        throw new Error("Invalid expected attendees number");
       }
 
-      const isPaid = ticketType === "paid"
-
+      const isPaid = ticketType === "paid";
       if (isPaid && (!regularPrice || !vipPrice)) {
-        throw new Error("Both regular and VIP prices are required for paid events")
+        throw new Error("Both regular and VIP prices are required for paid events");
       }
 
-      // Upload banner to IPFS (improved base64 handling)
-      let bannerCID = ""
-      if (eventData.bannerPreview) {
-        console.log('Uploading base64 banner to IPFS...')
-        try {
-          // Convert base64 to Blob/File (reliable for data URLs)
-          const base64Data = eventData.bannerPreview.split(',')[1] // Remove 'data:image/...;base64,' prefix
-          const byteCharacters = atob(base64Data)
-          const byteNumbers = new Array(byteCharacters.length)
-          for (let i = 0; i < byteCharacters.length; i++) {
-            byteNumbers[i] = byteCharacters.charCodeAt(i)
-          }
-          const byteArray = new Uint8Array(byteNumbers)
-          const blob = new Blob([byteArray], { type: 'image/jpeg' }) // Adjust type if needed (e.g., 'image/png')
-          const file = new File([blob], "event-banner.jpg", { type: 'image/jpeg' })
+      // Upload banner to IPFS
+      const bannerCID = await uploadBannerToIPFS(eventData.bannerPreview || "");
 
-          const uploadResult = await storage.upload(file)
-          bannerCID = storage.resolveScheme(uploadResult) // e.g., 'ipfs://Qm...'
-          console.log('Banner uploaded to IPFS with CID:', bannerCID)
-        } catch (uploadError) {
-          console.error('IPFS upload failed:', uploadError)
-          const errorMessage = typeof uploadError === "object" && uploadError !== null && "message" in uploadError
-            ? (uploadError as { message: string }).message
-            : String(uploadError)
-          throw new Error(`Failed to upload banner to IPFS: ${errorMessage}`)
-        }
-      } else {
-        // Optional: Allow publishing without banner
-        bannerCID = ""
-        console.log('No banner provided, skipping IPFS upload')
-      }
-
-      console.log('Creating event transaction with params:', {
+      console.log("Creating event with params:", {
         eventName: eventData.eventName,
         eventDescription: eventData.eventDescription,
         location: eventData.location,
@@ -192,99 +233,89 @@ export default function PreviewEventPage() {
         endTimestamp,
         expected,
         isPaid,
-        bannerCID
-      })
-      const createEventTx = await contract.createEvent(
-        eventData.eventName,
-        eventData.eventDescription,
-        eventData.location,
-        startTimestamp,
-        endTimestamp,
-        expected,
-        isPaid,
         bannerCID,
-        { value: 0, gasLimit: 500000 }
-      )
+      });
 
-      console.log('Waiting for transaction confirmation. Tx hash:', createEventTx.hash)
-      const receipt = await createEventTx.wait()
-      
-      if (!receipt) {
-        throw new Error("Transaction failed - no receipt received")
-      }
-
-      console.log('Transaction receipt:', JSON.stringify(receipt, null, 2))
-
-      console.log('Parsing event ID from logs...')
-      const eventInterface = new ethers.Interface(contractABI)
-      let eventId
-      for (const log of receipt.logs) {
-        try {
-          console.log('Parsing log:', log)
-          const parsed = eventInterface.parseLog({
-            topics: log.topics,
-            data: log.data
-          })
-          if (parsed?.name === "EventOrganized") {
-            eventId = parsed.args.eventId
-            console.log('Found EventOrganized with eventId:', eventId.toString())
-            break
-          }
-        } catch (parseError) {
-          console.warn('Failed to parse log:', parseError)
-          continue
-        }
-      }
-
-      if (!eventId) {
-        throw new Error("Failed to extract event ID from transaction logs. Check contract deployment and ABI.")
-      }
-
-      console.log('Event created with ID:', eventId.toString())
-
-      console.log('Creating tickets...')
-      if (isPaid) {
-        const regularWei = ethers.utils.parseEther(regularPrice)
-        const vipWei = ethers.utils.parseEther(vipPrice)
-        
-        console.log('Creating regular ticket...')
-        const regularTicketTx = await contract.createTicket(eventId, 1, regularWei, { value: 0, gasLimit: 1000000 })
-        await regularTicketTx.wait()
-        
-        console.log('Creating VIP ticket...')
-        const vipTicketTx = await contract.createTicket(eventId, 2, vipWei, { value: 0, gasLimit: 1000000 })
-        await vipTicketTx.wait()
-      } else {
-        console.log('Creating free ticket...')
-        const freeTicketTx = await contract.createTicket(eventId, 0, BigInt(0), { value: 0, gasLimit: 1000000 })
-        await freeTicketTx.wait()
-      }
-
-      localStorage.removeItem("eventFormData")
-      alert("Event published successfully! Gas fees paid in STT (free testnet tokens).")
-      router.push("/dashboard")
+      // Create event using Wagmi
+      writeContract({
+        address: contractAddress as `0x${string}`,
+        abi: contractABI,
+        functionName: 'createEvent',
+        args: [
+          eventData.eventName,
+          eventData.eventDescription,
+          eventData.location,
+          BigInt(startTimestamp),
+          BigInt(endTimestamp),
+          BigInt(expected),
+          isPaid,
+          bannerCID
+        ],
+      });
 
     } catch (error: any) {
-      console.error('Publish error:', error)
-      let errorMessage = "Failed to publish event"
+      console.error("Publish error:", error);
+      let errorMessage = "Failed to publish event";
+      
       if (error.message?.includes("User denied")) {
-        errorMessage = "Transaction was cancelled by user"
+        errorMessage = "Transaction was cancelled by user";
       } else if (error.message?.includes("insufficient funds")) {
-        errorMessage = "Insufficient STT tokens. Please claim more from the Somnia Testnet faucet at https://testnet.somnia.network."
-      } else if (error.message?.includes("No wallet")) {
-        errorMessage = "Please install and connect a Web3 wallet (like MetaMask)"
-      } else if (error.message?.includes("network")) {
-        errorMessage = "Network error - please ensure you're on the Somnia Testnet"
-      } else if (error.reason) {
-        errorMessage = `Transaction failed: ${error.reason}`
+        errorMessage = "Insufficient STT tokens. Please claim more from the Somnia Testnet faucet.";
+      } else if (error.message?.includes("IPFS")) {
+        errorMessage = error.message;
       } else if (error.message) {
-        errorMessage = error.message
+        errorMessage = error.message;
       }
-      alert(errorMessage)
-    } finally {
-      setIsPublishing(false)
+      
+      alert(errorMessage);
+      setIsPublishing(false);
     }
-  }
+  };
+
+  const createTickets = (eventId: bigint) => {
+    if (ticketType === "paid") {
+      // Create regular ticket first
+      writeTicketContract({
+        address: contractAddress as `0x${string}`,
+        abi: contractABI,
+        functionName: 'createTicket',
+        args: [
+          eventId,
+          1, // REGULAR category
+          parseEther(regularPrice)
+        ],
+      });
+    } else {
+      // Create free ticket
+      writeTicketContract({
+        address: contractAddress as `0x${string}`,
+        abi: contractABI,
+        functionName: 'createTicket',
+        args: [
+          eventId,
+          0, // NONE category (free)
+          BigInt(0)
+        ],
+      });
+    }
+  };
+
+  // Handle VIP ticket creation after regular ticket (for paid events)
+  useEffect(() => {
+    if (isTicketSuccess && ticketType === "paid" && createdEventId && vipPrice) {
+      // Check if we just created the regular ticket, now create VIP
+      writeTicketContract({
+        address: contractAddress as `0x${string}`,
+        abi: contractABI,
+        functionName: 'createTicket',
+        args: [
+          createdEventId,
+          2, // VIP category
+          parseEther(vipPrice)
+        ],
+      });
+    }
+  }, [isTicketSuccess, ticketType, createdEventId, vipPrice]);
 
   const formatDate = (date: string) => {
     return new Date(date).toLocaleDateString("en-US", {
@@ -292,16 +323,30 @@ export default function PreviewEventPage() {
       year: "numeric",
       month: "long",
       day: "numeric",
-    })
-  }
+    });
+  };
 
   const formatTime = (time: string) => {
     return new Date(`2000-01-01T${time}`).toLocaleTimeString("en-US", {
       hour: "numeric",
       minute: "2-digit",
       hour12: true,
-    })
-  }
+    });
+  };
+
+  const addSomniaNetwork = async () => {
+    try {
+      await switchChain({ chainId: SOMNIA_TESTNET_ID });
+    } catch (error) {
+      // If network doesn't exist, it will throw an error and the user needs to add it manually
+      alert("Please manually add Somnia Shannon Testnet to your wallet:\n\n" +
+            "Network Name: Somnia Shannon Testnet\n" +
+            "RPC URL: https://dream-rpc.somnia.network\n" +
+            "Chain ID: 50312\n" +
+            "Currency Symbol: STT\n" +
+            "Block Explorer: https://shannon-explorer.somnia.network");
+    }
+  };
 
   if (!eventData) {
     return (
@@ -313,8 +358,10 @@ export default function PreviewEventPage() {
           </div>
         </main>
       </div>
-    )
+    );
   }
+
+  const isLoading = isPublishing || isCreatingEvent || isWaitingForEvent || isCreatingTicket || isWaitingForTicket;
 
   return (
     <div className="flex min-h-screen bg-background">
@@ -327,30 +374,52 @@ export default function PreviewEventPage() {
               Review your event details and set ticket pricing. Publishing requires STT tokens from the Somnia Testnet faucet (free).
             </p>
             <p className="text-sm text-muted-foreground mt-2">
-              <a href="https://testnet.somnia.network" target="_blank" rel="noopener noreferrer" className="underline">
+              <a
+                href="https://testnet.somnia.network"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline"
+              >
                 Claim STT tokens here
-              </a> to cover gas fees.
+              </a>{" "}
+              to cover gas fees.
             </p>
+            
+            {/* Wallet Connection Status */}
+            <div className="mt-4 p-4 bg-muted rounded-lg">
+              {!isConnected ? (
+                <div className="flex items-center justify-between">
+                  <span className="text-sm">Wallet not connected</span>
+                  <Button onClick={handleWalletConnection} size="sm">
+                    Connect Wallet
+                  </Button>
+                </div>
+              ) : chainId !== SOMNIA_TESTNET_ID ? (
+                <div className="flex items-center justify-between">
+                  <span className="text-sm">Wrong network (Current: {chainId})</span>
+                  <Button onClick={addSomniaNetwork} size="sm">
+                    Switch to Somnia
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-green-600">✓ Connected to Somnia Testnet</span>
+                  <span className="text-xs text-muted-foreground">
+                    {address?.slice(0, 6)}...{address?.slice(-4)}
+                  </span>
+                </div>
+              )}
+            </div>
+
             <Button
               variant="outline"
-              onClick={async () => {
-                const ethereum = getEthereumProvider()
-                await ethereum.request({
-                  method: 'wallet_addEthereumChain',
-                  params: [{
-                    chainId: '0xc488',
-                    chainName: 'Somnia Shannon Testnet',
-                    nativeCurrency: { name: 'Somnia Testnet Token', symbol: 'STT', decimals: 18 },
-                    rpcUrls: ['https://testnet-rpc.somnia.network'],
-                    blockExplorerUrls: ['https://shannon-explorer.somnia.network'],
-                  }],
-                })
-              }}
+              onClick={addSomniaNetwork}
               className="mt-2"
             >
               Add Somnia Testnet to Wallet
             </Button>
           </div>
+
           <div className="grid lg:grid-cols-2 gap-8">
             <Card>
               <CardHeader>
@@ -401,6 +470,7 @@ export default function PreviewEventPage() {
                 </div>
               </CardContent>
             </Card>
+
             <Card>
               <CardHeader>
                 <CardTitle>Ticket Pricing</CardTitle>
@@ -426,6 +496,7 @@ export default function PreviewEventPage() {
                     </Label>
                   </div>
                 </RadioGroup>
+
                 {ticketType === "paid" && (
                   <div className="space-y-4 pl-6 border-l-2 border-primary">
                     <div className="space-y-2">
@@ -454,29 +525,43 @@ export default function PreviewEventPage() {
                     </div>
                   </div>
                 )}
+
                 <div className="pt-4 space-y-3">
-                  <Button 
-                    onClick={handlePublish} 
-                    className="w-full" 
-                    size="lg"
-                    disabled={isPublishing}
-                  >
-                    {isPublishing ? "Publishing..." : "Publish Event"}
-                  </Button>
-                  <Button 
-                    variant="outline" 
-                    onClick={() => router.push("/create")} 
+                  <Button
+                    onClick={handlePublish}
                     className="w-full"
-                    disabled={isPublishing}
+                    size="lg"
+                    disabled={isLoading || !isConnected || chainId !== SOMNIA_TESTNET_ID}
+                  >
+                    {isLoading 
+                      ? (isCreatingEvent || isWaitingForEvent ? "Creating Event..." 
+                         : isCreatingTicket || isWaitingForTicket ? "Creating Tickets..." 
+                         : "Publishing...")
+                      : "Publish Event"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => router.push("/create")}
+                    className="w-full"
+                    disabled={isLoading}
                   >
                     Back to Edit
                   </Button>
                 </div>
+
+                {/* Error Display */}
+                {(createEventError || createTicketError) && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-md">
+                    <p className="text-sm text-red-600">
+                      Error: {createEventError?.message || createTicketError?.message}
+                    </p>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
         </div>
       </main>
     </div>
-  )
+  );
 }
