@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { useAccount, useBalance, useDisconnect } from 'wagmi'
 import { ConnectButton } from '@rainbow-me/rainbowkit'
 import { formatEther } from 'viem'
-import { useEffect, useState } from 'react'
+
 
 export function WalletCard() {
   const { address, isConnected, chain } = useAccount()

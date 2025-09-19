@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Sidebar } from "@/components/dashboard/sidebar"
 import { useRouter } from "next/navigation"
+import Image from "next/image"
 
 export default function CreateEventPage() {
   const router = useRouter()
@@ -217,9 +218,11 @@ export default function CreateEventPage() {
                   />
                   {bannerPreview && (
                     <div className="relative">
-                      <img
-                        src={bannerPreview || "/placeholder.svg"}
+                      <Image
+                        src={bannerPreview}
                         alt="Banner preview"
+                        width={800}
+                        height={192}
                         className="w-full h-48 object-cover rounded-lg border"
                       />
                       <Button
