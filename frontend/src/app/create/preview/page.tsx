@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -71,23 +71,55 @@ export default function PreviewEventPage() {
 
   // Extract event ID from transaction receipt when event creation succeeds
   useEffect(() => {
-    if (isEventSuccess && eventReceipt) {
-      try {
-        const logs = parseEventLogs({
-          abi: contractABI,
-          logs: eventReceipt.logs,
-          eventName: 'EventOrganized'
-        });
-        if (logs.length > 0) {
-          const eventId = logs[0].args.eventId as bigint;
-          console.log("Event created with ID:", eventId.toString());
-          setCreatedEventId(eventId);
-        }
-      } catch (error) {
-        console.error("Error parsing event logs:", error);
+  if (isEventSuccess && eventReceipt) {
+    try {
+      const logs = parseEventLogs({
+        abi: contractABI,
+        logs: eventReceipt.logs,
+        eventName: 'EventOrganized'
+      });
+      
+      if (logs.length > 0) {
+        // Use type assertion to unknown first, then to the expected type
+        const log = logs[0] as unknown as { args: { eventId: bigint } };
+        const eventId = log.args.eventId;
+        console.log("Event created with ID:", eventId.toString());
+        setCreatedEventId(eventId);
       }
+    } catch (error) {
+      console.error("Error parsing event logs:", error);
     }
-  }, [isEventSuccess, eventReceipt]);
+  }
+}, [isEventSuccess, eventReceipt]);
+
+  // Move createTickets function inside useCallback to fix dependency warning
+  const createTickets = useCallback((eventId: bigint) => {
+    if (ticketType === "paid") {
+      // Create regular ticket first
+      writeTicketContract({
+        address: contractAddress as `0x${string}`,
+        abi: contractABI,
+        functionName: 'createTicket',
+        args: [
+          eventId,
+          1, // REGULAR category
+          parseEther(regularPrice)
+        ],
+      });
+    } else {
+      // Create free ticket
+      writeTicketContract({
+        address: contractAddress as `0x${string}`,
+        abi: contractABI,
+        functionName: 'createTicket',
+        args: [
+          eventId,
+          0, // NONE category (free)
+          BigInt(0)
+        ],
+      });
+    }
+  }, [ticketType, regularPrice, writeTicketContract]);
 
   // Auto-create tickets after event creation
   useEffect(() => {
@@ -206,48 +238,22 @@ export default function PreviewEventPage() {
           bannerCID
         ],
       });
-    } catch (error: Error) {
-      console.error("Publish error:", error);
+    } catch (err) {
+      console.error("Publish error:", err);
       let errorMessage = "Failed to publish event";
-      if (error.message?.includes("User denied")) {
-        errorMessage = "Transaction was cancelled by user";
-      } else if (error.message?.includes("insufficient funds")) {
-        errorMessage = "Insufficient STT tokens. Please claim more from the Somnia Testnet faucet.";
-      } else if (error.message?.includes("IPFS")) {
-        errorMessage = error.message;
-      } else if (error.message) {
-        errorMessage = error.message;
+      if (err instanceof Error) {
+        if (err.message?.includes("User denied")) {
+          errorMessage = "Transaction was cancelled by user";
+        } else if (err.message?.includes("insufficient funds")) {
+          errorMessage = "Insufficient STT tokens. Please claim more from the Somnia Testnet faucet.";
+        } else if (err.message?.includes("IPFS")) {
+          errorMessage = err.message;
+        } else if (err.message) {
+          errorMessage = err.message;
+        }
       }
       alert(errorMessage);
       setIsPublishing(false);
-    }
-  };
-
-  const createTickets = (eventId: bigint) => {
-    if (ticketType === "paid") {
-      // Create regular ticket first
-      writeTicketContract({
-        address: contractAddress as `0x${string}`,
-        abi: contractABI,
-        functionName: 'createTicket',
-        args: [
-          eventId,
-          1, // REGULAR category
-          parseEther(regularPrice)
-        ],
-      });
-    } else {
-      // Create free ticket
-      writeTicketContract({
-        address: contractAddress as `0x${string}`,
-        abi: contractABI,
-        functionName: 'createTicket',
-        args: [
-          eventId,
-          0, // NONE category (free)
-          BigInt(0)
-        ],
-      });
     }
   };
 
@@ -288,7 +294,7 @@ export default function PreviewEventPage() {
   const addSomniaNetwork = async () => {
     try {
       await switchChain({ chainId: SOMNIA_TESTNET_ID });
-    } catch (error) {
+    } catch {
       alert(
         "Please manually add Somnia Shannon Testnet to your wallet:\n\n" +
         "Network Name: Somnia Shannon Testnet\n" +
@@ -375,7 +381,10 @@ export default function PreviewEventPage() {
             <CardTitle>Ticket Pricing</CardTitle>
           </CardHeader>
           <CardContent>
-            <RadioGroup value={ticketType} onValueChange={setTicketType}>
+            <RadioGroup 
+              value={ticketType} 
+              onValueChange={(value) => setTicketType(value as "free" | "paid")}
+            >
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="free" id="free" />
                 <Label htmlFor="free">Free Event</Label>
