@@ -1,6 +1,6 @@
 ﻿# 🎫 leepoo - NFT Powered Event Ticketing Platform
 
-A revolutionary blockchain-based event ticketing platform that leverages NFT technology to create secure, verifiable, and transferable event tickets. Built with Next.js 14, TypeScript, and Tailwind CSS.
+An on-chain event ticketing platform that issues tickets as NFTs. This allows for secure, transparent, and easily transferable ticket ownership, eliminating fraud and scalping. It can be used for concerts, sports events, and conferences.
 
 # Contract Address
 0x094d3736C8dfe4cAba0b63CC0B7eD9e189642550
@@ -238,5 +238,6 @@ For support, email support@leepoo.com or join our community Discord.
 - [ ] Multi-chain support
 
 ---
+
 
 
