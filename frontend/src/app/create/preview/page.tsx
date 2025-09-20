@@ -128,14 +128,33 @@ export default function PreviewEventPage() {
     }
   }, [createdEventId, isCreatingTicket, createTicketHash, createTickets]);
 
-  // Handle completion
+  // Updated completion handler with improved redirect
   useEffect(() => {
     if (isTicketSuccess && createdEventId) {
-      localStorage.removeItem("eventFormData");
-      alert("Event published successfully!");
-      router.push("/dashboard");
+      // For free events, redirect immediately after first ticket creation
+      if (ticketType === "free") {
+        localStorage.removeItem("eventFormData");
+        alert("Event published successfully!");
+        setTimeout(() => {
+          router.push("/dashboard");
+          window.location.reload();
+        }, 2000);
+      }
+      // For paid events, only redirect after both tickets are created
+      else if (ticketType === "paid") {
+        // We need to check if this is the second ticket (VIP) creation
+        // by checking if we already have a createTicketHash
+        setTimeout(() => {
+          localStorage.removeItem("eventFormData");
+          alert("Event published successfully!");
+          setTimeout(() => {
+            router.push("/dashboard");
+            window.location.reload();
+          }, 1000);
+        }, 3000); // Longer delay for paid events to allow both tickets
+      }
     }
-  }, [isTicketSuccess, createdEventId, router]);
+  }, [isTicketSuccess, createdEventId, router, ticketType]);
 
   const handleWalletConnection = async () => {
     if (!isConnected) {
@@ -260,19 +279,25 @@ export default function PreviewEventPage() {
   // Handle VIP ticket creation after regular ticket (for paid events)
   useEffect(() => {
     if (isTicketSuccess && ticketType === "paid" && createdEventId && vipPrice) {
-      // Check if we just created the regular ticket, now create VIP
-      writeTicketContract({
-        address: contractAddress as `0x${string}`,
-        abi: contractABI,
-        functionName: 'createTicket',
-        args: [
-          createdEventId,
-          2, // VIP category
-          parseEther(vipPrice)
-        ],
-      });
+      // Only create VIP ticket if we haven't created it yet
+      // Check if the current success is from regular ticket creation
+      const hasCreatedRegular = createTicketHash && !createTicketHash.includes('vip');
+      if (hasCreatedRegular) {
+        setTimeout(() => {
+          writeTicketContract({
+            address: contractAddress as `0x${string}`,
+            abi: contractABI,
+            functionName: 'createTicket',
+            args: [
+              createdEventId,
+              2, // VIP category
+              parseEther(vipPrice)
+            ],
+          });
+        }, 1000); // Small delay between ticket creations
+      }
     }
-  }, [isTicketSuccess, ticketType, createdEventId, vipPrice, writeTicketContract]);
+  }, [isTicketSuccess, ticketType, createdEventId, vipPrice, writeTicketContract, createTicketHash]);
 
   const formatDate = (date: string): string => {
     return new Date(date).toLocaleDateString("en-US", {
